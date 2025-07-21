@@ -663,10 +663,13 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
-        -- clangd = {},
+        clangd = {
+          cmd = { 'clangd', '--clang-tidy' },
+        },
+        cmake = {},
         -- gopls = {},
         -- pyright = {},
-        -- rust_analyzer = {},
+        rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
@@ -691,6 +694,10 @@ require('lazy').setup({
           },
         },
       }
+      -- Servers installed locally
+      local local_servers = {
+        qmlls = {},
+      }
 
       -- Ensure the servers and tools above are installed
       --
@@ -711,20 +718,29 @@ require('lazy').setup({
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
-      require('mason-lspconfig').setup {
+      local lspconfig = require 'lspconfig'
+      local mason_lspconfig = require 'mason-lspconfig'
+
+      register_server = function(server_name)
+        local server = servers[server_name] or {}
+        -- This handles overriding only values explicitly passed
+        -- by the server configuration above. Useful when disabling
+        -- certain features of an LSP (for example, turning off formatting for ts_ls)
+        server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+        lspconfig[server_name].setup(server)
+      end
+
+      mason_lspconfig.setup {
         ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
         automatic_installation = false,
         handlers = {
-          function(server_name)
-            local server = servers[server_name] or {}
-            -- This handles overriding only values explicitly passed
-            -- by the server configuration above. Useful when disabling
-            -- certain features of an LSP (for example, turning off formatting for ts_ls)
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
+          register_server,
         },
       }
+
+      for server_name, _ in pairs(local_servers) do
+        register_server(server_name)
+      end
     end,
   },
 
@@ -760,6 +776,10 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        c = { 'clang-format' },
+        cpp = { 'clang-format' },
+        cmake = { 'cmakelang' },
+
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
         --
